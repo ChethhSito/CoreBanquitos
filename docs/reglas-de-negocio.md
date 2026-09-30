@@ -18,7 +18,7 @@ Todas las cuentas y operaciones de la primera versión usan PEN. Los usuarios, c
 
 ## Depósitos de prueba
 
-Un depósito simulado también debe tener doble partida. Para ello se usará una cuenta interna de contrapartida; su funcionamiento exacto se definirá antes de implementar depósitos.
+Un depósito simulado se registra como una transferencia desde la cuenta interna `SYSTEM` hacia una cuenta `USER`. La cuenta interna puede quedar negativa y sirve de contrapartida para que el ledger global permanezca balanceado. Solo un flujo administrativo podrá crear estos depósitos.
 
 ## Casos críticos para verificar
 

@@ -19,7 +19,8 @@ Este proyecto no procesa dinero real ni datos bancarios reales.
 
 - [Reglas de negocio](docs/reglas-de-negocio.md)
 - [Modelo de datos inicial](docs/modelo-datos.md)
+- [Contrato OpenAPI de transferencias](docs/openapi.yaml)
 
 ## Próximo entregable
 
-Definir el contrato de `POST /api/v1/transfers` y construir una transferencia atómica con PostgreSQL, cuentas y ledger.
+Construir una transferencia atómica con PostgreSQL, cuentas y ledger según el contrato documentado.
