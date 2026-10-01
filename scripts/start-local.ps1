@@ -9,7 +9,7 @@ if (-not (Test-Path -LiteralPath $envFile)) {
 foreach ($line in Get-Content -LiteralPath $envFile) {
     if ($line -match '^\s*(#|$)') { continue }
     $parts = $line -split '=', 2
-    if ($parts.Count -ne 2) { throw 'Formato inválido en .env.' }
+    if ($parts.Count -ne 2) { throw 'Formato invalido en .env.' }
     [Environment]::SetEnvironmentVariable($parts[0], $parts[1], 'Process')
 }
 
