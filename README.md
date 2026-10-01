@@ -13,7 +13,7 @@ Este proyecto no procesa dinero real ni datos bancarios reales.
 
 ## Estado
 
-**Fase 1 — base técnica.** El proyecto Spring Boot y la primera migración SQL están preparados. La guía completa está en [banckCore_Planificacion.md](banckCore_Planificacion.md).
+**Fase 1 — core interno.** El proyecto Spring Boot, la primera migración SQL y el servicio transaccional de transferencias están preparados. La guía completa está en [banckCore_Planificacion.md](banckCore_Planificacion.md).
 
 ## Documentación
 
@@ -23,7 +23,7 @@ Este proyecto no procesa dinero real ni datos bancarios reales.
 
 ## Próximo entregable
 
-Construir una transferencia atómica con PostgreSQL, cuentas y ledger según el contrato documentado.
+Completar la idempotencia y la autenticación antes de exponer `POST /api/v1/transfers` según el contrato documentado.
 
 ## Ejecutar en Windows
 
@@ -34,3 +34,9 @@ Requisitos: JDK 25 y PostgreSQL local activo. El proyecto incluye Maven Wrapper;
 3. Comprueba `http://localhost:8080/actuator/health`.
 
 El código aún no expone transferencias; el endpoint de salud confirma solamente que la aplicación y la conexión local arrancan.
+
+## Probar el core de transferencias
+
+Ejecuta `./scripts/test-local.ps1` en PowerShell. El script inicia un PostgreSQL temporal en el puerto 55432, aplica Flyway, prueba transferencia, saldo insuficiente, rollback del ledger y dos solicitudes concurrentes, y elimina la base temporal. No modifica la base `bankcore` de desarrollo. Si el puerto está ocupado, usa `./scripts/test-local.ps1 -Port 55433`.
+
+La lógica de transferencias existe como servicio interno. El endpoint HTTP se agregará junto con autenticación e idempotencia.
