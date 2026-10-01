@@ -2,6 +2,7 @@ package com.chethhsito.bankcore.account;
 
 import java.math.BigDecimal;
 import java.util.Optional;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -30,6 +31,19 @@ public class AccountJdbcRepository {
                 ),
                 id
         ).stream().findFirst();
+    }
+
+    public List<Account> findByOwner(UUID ownerId) {
+        return jdbc.query("""
+                SELECT id, owner_id, account_type, currency, available_balance, status
+                FROM accounts WHERE owner_id = ? ORDER BY created_at, id
+                """, (rs, row) -> new Account(
+                rs.getObject("id", UUID.class),
+                rs.getObject("owner_id", UUID.class),
+                rs.getString("account_type"),
+                rs.getString("currency"),
+                rs.getBigDecimal("available_balance"),
+                rs.getString("status")), ownerId);
     }
 
     public void setBalance(UUID id, BigDecimal balance) {
