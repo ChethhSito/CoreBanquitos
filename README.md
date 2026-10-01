@@ -20,6 +20,7 @@ Este proyecto no procesa dinero real ni datos bancarios reales.
 - [Reglas de negocio](docs/reglas-de-negocio.md)
 - [Modelo de datos inicial](docs/modelo-datos.md)
 - [Contrato OpenAPI de transferencias](docs/openapi.yaml)
+- [Flujo de una transferencia](docs/flujo-transferencia.md)
 
 ## Próximo entregable
 
@@ -37,6 +38,6 @@ El código aún no expone transferencias; el endpoint de salud confirma solament
 
 ## Probar el core de transferencias
 
-Ejecuta `./scripts/test-local.ps1` en PowerShell. El script inicia un PostgreSQL temporal en el puerto 55432, aplica Flyway, prueba transferencia, saldo insuficiente, rollback del ledger y dos solicitudes concurrentes, y elimina la base temporal. No modifica la base `bankcore` de desarrollo. Si el puerto está ocupado, usa `./scripts/test-local.ps1 -Port 55433`.
+Ejecuta `./scripts/test-local.ps1` en PowerShell. El script inicia un PostgreSQL temporal en el puerto 55432, aplica Flyway, prueba transferencia, saldo insuficiente, rollback del ledger y dos solicitudes concurrentes, y elimina la base temporal. Al terminar muestra `OK: 4 tests passed, 0 failures, 0 errors, 0 skipped.` No modifica la base `bankcore` de desarrollo. Si el puerto está ocupado, usa `./scripts/test-local.ps1 -Port 55433`.
 
 La lógica de transferencias existe como servicio interno. El endpoint HTTP se agregará junto con autenticación e idempotencia.

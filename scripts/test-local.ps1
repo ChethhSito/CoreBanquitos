@@ -11,6 +11,7 @@ $pgCtl = Join-Path $PostgresBin 'pg_ctl.exe'
 $initDb = Join-Path $PostgresBin 'initdb.exe'
 $createDb = Join-Path $PostgresBin 'createdb.exe'
 $started = $false
+$testSummary = $null
 
 foreach ($tool in @($pgCtl, $initDb, $createDb)) {
     if (-not (Test-Path -LiteralPath $tool)) { throw "Missing PostgreSQL tool: $tool" }
@@ -42,8 +43,27 @@ try {
 
     Push-Location $repoRoot
     try {
+        $testStartedAt = (Get-Date).ToUniversalTime()
         & (Join-Path $repoRoot 'mvnw.cmd') -q test
         if ($LASTEXITCODE -ne 0) { throw 'Integration tests failed.' }
+
+        $reportPath = Join-Path $repoRoot 'target\surefire-reports\TEST-com.chethhsito.bankcore.transfer.TransferServiceIntegrationTest.xml'
+        if (-not (Test-Path -LiteralPath $reportPath)) {
+            throw 'The transfer test report was not created.'
+        }
+        $reportFile = Get-Item -LiteralPath $reportPath
+        if ($reportFile.LastWriteTimeUtc -lt $testStartedAt.AddSeconds(-1)) {
+            throw 'The transfer test report was not updated by this run.'
+        }
+        [xml]$report = Get-Content -LiteralPath $reportPath -Raw
+        $tests = [int]$report.testsuite.tests
+        $failures = [int]$report.testsuite.failures
+        $errors = [int]$report.testsuite.errors
+        $skipped = [int]$report.testsuite.skipped
+        if ($tests -lt 4 -or $failures -ne 0 -or $errors -ne 0 -or $skipped -ne 0) {
+            throw "Unexpected test result: $tests tests, $failures failures, $errors errors, $skipped skipped."
+        }
+        $testSummary = "OK: $tests tests passed, 0 failures, 0 errors, 0 skipped."
     } finally {
         Pop-Location
     }
@@ -59,3 +79,5 @@ try {
         Remove-Item -LiteralPath $resolvedCluster -Recurse -Force
     }
 }
+
+Write-Host $testSummary
