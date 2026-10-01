@@ -42,4 +42,4 @@ sequenceDiagram
 - Los dos asientos de una transferencia se compensan: `-monto + monto = 0`.
 - `Account.available_balance` es una proyección de lectura rápida. El ledger conserva la historia que permitirá reconstruirla y reconciliarla.
 
-Esta versión es un servicio interno. Todavía faltan la idempotencia, la autenticación y el endpoint HTTP.
+Esta versión es un servicio interno. `IdempotentTransferService` rodea este flujo para guardar y reproducir su resultado; consulta [idempotencia.md](idempotencia.md). Todavía faltan la autenticación y el endpoint HTTP.

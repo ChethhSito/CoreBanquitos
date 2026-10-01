@@ -32,6 +32,7 @@ class TransferServiceIntegrationTest {
     }
 
     @Autowired TransferService service;
+    @Autowired IdempotentTransferService idempotent;
     @Autowired JdbcTemplate jdbc;
 
     private UUID actorId;
@@ -96,6 +97,7 @@ class TransferServiceIntegrationTest {
     void ledgerFailureRollsBackTransferAndBothBalances() {
         int ledgerTransactionsBefore = jdbc.queryForObject(
                 "SELECT count(*) FROM ledger_transactions", Integer.class);
+        UUID key = UUID.randomUUID();
         String suffix = sourceId.toString().replace("-", "");
         String functionName = "fail_ledger_" + suffix;
         String triggerName = "fail_ledger_" + suffix;
@@ -112,12 +114,15 @@ class TransferServiceIntegrationTest {
         jdbc.execute("CREATE TRIGGER " + triggerName
                 + " BEFORE INSERT ON ledger_entries FOR EACH ROW EXECUTE FUNCTION " + functionName + "()");
         try {
-            assertThrows(RuntimeException.class, () -> service.transfer(command("60.00")));
+            assertThrows(RuntimeException.class, () -> idempotent.transfer(key, command("60.00")));
             assertEquals(new BigDecimal("100.00"), balance(sourceId));
             assertEquals(new BigDecimal("0.00"), balance(destinationId));
             assertEquals(0, internalTransfers());
             assertEquals(ledgerTransactionsBefore, jdbc.queryForObject(
                     "SELECT count(*) FROM ledger_transactions", Integer.class));
+            assertEquals(0, jdbc.queryForObject(
+                    "SELECT count(*) FROM idempotency_keys WHERE user_id = ? AND key = ?",
+                    Integer.class, actorId, key));
         } finally {
             jdbc.execute("DROP TRIGGER " + triggerName + " ON ledger_entries");
             jdbc.execute("DROP FUNCTION " + functionName + "()");
@@ -144,6 +149,75 @@ class TransferServiceIntegrationTest {
         } finally {
             executor.shutdownNow();
         }
+    }
+
+    @Test
+    void repeatedKeyReturnsOriginalResultWithoutMovingMoneyAgain() {
+        UUID key = UUID.randomUUID();
+        TransferAttempt first = idempotent.transfer(key, command("60.00"));
+        TransferAttempt replay = idempotent.transfer(key, command("60.00"));
+
+        assertEquals(201, first.status());
+        assertEquals(false, first.replayed());
+        assertEquals(true, replay.replayed());
+        assertEquals(first.transfer(), replay.transfer());
+        assertEquals(new BigDecimal("40.00"), balance(sourceId));
+        assertEquals(new BigDecimal("60.00"), balance(destinationId));
+        assertEquals(1, internalTransfers());
+    }
+
+    @Test
+    void sameKeyWithDifferentAmountIsConflict() {
+        UUID key = UUID.randomUUID();
+        idempotent.transfer(key, command("60.00"));
+
+        assertThrows(IdempotencyConflictException.class,
+                () -> idempotent.transfer(key, command("70.00")));
+        assertEquals(new BigDecimal("40.00"), balance(sourceId));
+        assertEquals(1, internalTransfers());
+    }
+
+    @Test
+    void definitiveRejectionIsReplayed() {
+        UUID key = UUID.randomUUID();
+        TransferAttempt first = idempotent.transfer(key, command("101.00"));
+        TransferAttempt replay = idempotent.transfer(key, command("101.00"));
+
+        assertEquals(422, first.status());
+        assertEquals("INSUFFICIENT_FUNDS", first.errorCode());
+        assertEquals(false, first.replayed());
+        assertEquals(true, replay.replayed());
+        assertEquals(first.errorCode(), replay.errorCode());
+        assertEquals(first.errorMessage(), replay.errorMessage());
+        assertEquals(new BigDecimal("100.00"), balance(sourceId));
+        assertEquals(0, internalTransfers());
+    }
+
+    @Test
+    void concurrentRequestsWithSameKeyCreateOneTransfer() throws Exception {
+        UUID key = UUID.randomUUID();
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        CountDownLatch start = new CountDownLatch(1);
+        try {
+            Future<TransferAttempt> first = executor.submit(() -> idempotentAttemptAfter(start, key));
+            Future<TransferAttempt> second = executor.submit(() -> idempotentAttemptAfter(start, key));
+            start.countDown();
+            TransferAttempt firstOutcome = first.get(10, TimeUnit.SECONDS);
+            TransferAttempt secondOutcome = second.get(10, TimeUnit.SECONDS);
+            assertEquals(firstOutcome.transfer(), secondOutcome.transfer());
+            assertEquals(1, java.util.stream.Stream.of(firstOutcome, secondOutcome)
+                    .filter(TransferAttempt::replayed).count());
+            assertEquals(1, internalTransfers());
+            assertEquals(new BigDecimal("20.00"), balance(sourceId));
+            assertEquals(new BigDecimal("80.00"), balance(destinationId));
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    private TransferAttempt idempotentAttemptAfter(CountDownLatch start, UUID key) throws InterruptedException {
+        start.await();
+        return idempotent.transfer(key, command("80.00"));
     }
 
     private String attemptAfter(CountDownLatch start) throws InterruptedException {

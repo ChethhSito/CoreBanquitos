@@ -13,7 +13,7 @@ Este proyecto no procesa dinero real ni datos bancarios reales.
 
 ## Estado
 
-**Fase 1 — core interno.** El proyecto Spring Boot, la primera migración SQL y el servicio transaccional de transferencias están preparados. La guía completa está en [banckCore_Planificacion.md](banckCore_Planificacion.md).
+**Fases 1 y 2 — core e idempotencia internos.** La transferencia transaccional y el reintento seguro están implementados. La guía completa está en [banckCore_Planificacion.md](banckCore_Planificacion.md).
 
 ## Documentación
 
@@ -21,10 +21,11 @@ Este proyecto no procesa dinero real ni datos bancarios reales.
 - [Modelo de datos inicial](docs/modelo-datos.md)
 - [Contrato OpenAPI de transferencias](docs/openapi.yaml)
 - [Flujo de una transferencia](docs/flujo-transferencia.md)
+- [Idempotencia y reintentos](docs/idempotencia.md)
 
 ## Próximo entregable
 
-Completar la idempotencia y la autenticación antes de exponer `POST /api/v1/transfers` según el contrato documentado.
+Agregar autenticación antes de exponer `POST /api/v1/transfers` según el contrato documentado.
 
 ## Ejecutar en Windows
 
@@ -38,6 +39,6 @@ El código aún no expone transferencias; el endpoint de salud confirma solament
 
 ## Probar el core de transferencias
 
-Ejecuta `./scripts/test-local.ps1` en PowerShell. El script inicia un PostgreSQL temporal en el puerto 55432, aplica Flyway, prueba transferencia, saldo insuficiente, rollback del ledger y dos solicitudes concurrentes, y elimina la base temporal. Al terminar muestra `OK: 4 tests passed, 0 failures, 0 errors, 0 skipped.` No modifica la base `bankcore` de desarrollo. Si el puerto está ocupado, usa `./scripts/test-local.ps1 -Port 55433`.
+Ejecuta `./scripts/test-local.ps1` en PowerShell. El script inicia un PostgreSQL temporal en el puerto 55432, aplica Flyway, prueba la transferencia y los reintentos idempotentes, y elimina la base temporal. Al terminar muestra cuántas pruebas pasaron y si hubo fallos. No modifica la base `bankcore` de desarrollo. Si el puerto está ocupado, usa `./scripts/test-local.ps1 -Port 55433`.
 
-La lógica de transferencias existe como servicio interno. El endpoint HTTP se agregará junto con autenticación e idempotencia.
+La lógica de transferencias e idempotencia existe como servicio interno. El endpoint HTTP se agregará junto con autenticación.

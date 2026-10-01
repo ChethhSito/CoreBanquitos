@@ -5,6 +5,7 @@ import com.chethhsito.bankcore.account.AccountJdbcRepository;
 import com.chethhsito.bankcore.ledger.LedgerJdbcRepository;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,6 +28,10 @@ public class TransferService {
 
     @Transactional
     public TransferResult transfer(TransferCommand command) {
+        return execute(command);
+    }
+
+    TransferResult execute(TransferCommand command) {
         validateRequest(command);
 
         UUID sourceId = command.sourceAccountId();
@@ -45,7 +50,7 @@ public class TransferService {
 
         TransferResult result = new TransferResult(
                 UUID.randomUUID(), sourceId, destinationId,
-                command.amount(), command.currency(), Instant.now()
+                command.amount(), command.currency(), Instant.now().truncatedTo(ChronoUnit.MICROS)
         );
         transfers.insert(result);
         accounts.setBalance(sourceId, source.availableBalance().subtract(command.amount()));
@@ -54,19 +59,23 @@ public class TransferService {
         return result;
     }
 
-    private static void validateRequest(TransferCommand command) {
+    static void validateShape(TransferCommand command) {
         if (command == null || command.actorId() == null
                 || command.sourceAccountId() == null || command.destinationAccountId() == null
                 || command.amount() == null || command.currency() == null) {
             throw new TransferRejectedException("INVALID_REQUEST");
         }
-        if (command.sourceAccountId().equals(command.destinationAccountId())) {
-            throw new TransferRejectedException("SAME_SOURCE_DESTINATION");
-        }
         BigDecimal amount = command.amount();
         if (amount.signum() <= 0 || amount.scale() != 2 || amount.precision() > 19
                 || !"PEN".equals(command.currency())) {
             throw new TransferRejectedException("INVALID_REQUEST");
+        }
+    }
+
+    private static void validateRequest(TransferCommand command) {
+        validateShape(command);
+        if (command.sourceAccountId().equals(command.destinationAccountId())) {
+            throw new TransferRejectedException("SAME_SOURCE_DESTINATION");
         }
     }
 
