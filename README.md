@@ -24,6 +24,8 @@ Este proyecto no procesa dinero real ni datos bancarios reales.
 - [Idempotencia y reintentos](docs/idempotencia.md)
 - [Auditoría de acciones](docs/auditoria.md)
 
+Para consultar la auditoría desde Swagger, sigue la sección **Probar el rol auditor en local** de esa guía.
+
 ## Ejecutar en Windows
 
 Requisitos: JDK 25 y PostgreSQL local activo. El proyecto incluye Maven Wrapper; no hace falta instalar Maven por separado.

@@ -1,6 +1,7 @@
 package com.chethhsito.bankcore.transfer;
 
 import com.chethhsito.bankcore.identity.InvalidCredentialsException;
+import jakarta.validation.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -43,7 +44,8 @@ public class ApiExceptionHandler {
     }
 
     @ExceptionHandler({MethodArgumentNotValidException.class, HttpMessageNotReadableException.class,
-            MissingRequestHeaderException.class, MethodArgumentTypeMismatchException.class})
+            MissingRequestHeaderException.class, MethodArgumentTypeMismatchException.class,
+            ConstraintViolationException.class})
     ResponseEntity<ErrorResponse> invalidRequest() {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ErrorResponse(
                 "INVALID_REQUEST", "La solicitud no cumple el formato esperado."));

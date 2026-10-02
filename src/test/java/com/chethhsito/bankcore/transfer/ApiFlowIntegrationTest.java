@@ -68,6 +68,20 @@ class ApiFlowIntegrationTest {
         assertEquals(1, auditCount(alice.get("userId").asText(), "TRANSFER_COMPLETED",
                 first.get("id").asText()));
 
+        assertEquals(401, get("/api/v1/audit-logs", null).statusCode());
+        assertEquals(403, get("/api/v1/audit-logs", token).statusCode());
+        jdbc.update("UPDATE users SET role = 'AUDITOR' WHERE id = ?",
+                UUID.fromString(alice.get("userId").asText()));
+        assertEquals(403, get("/api/v1/audit-logs", token).statusCode());
+        String auditorToken = post("/api/v1/auth/login", "{\"email\":\"alice-" + suffix
+                + "@example.com\",\"password\":\"examplePassword123\"}", null, null, 200)
+                .get("accessToken").asText();
+        HttpResponse<String> auditResponse = get("/api/v1/audit-logs?limit=1", auditorToken);
+        assertEquals(200, auditResponse.statusCode(), auditResponse.body());
+        assertEquals(1, json.readTree(auditResponse.body()).size());
+        assertTrue(get("/api/v1/audit-logs", auditorToken).body().contains("TRANSFER_COMPLETED"));
+        assertEquals(400, get("/api/v1/audit-logs?limit=101", auditorToken).statusCode());
+
         JsonNode accounts = json.readTree(get("/api/v1/accounts", token).body());
         assertEquals("40.00", accounts.get(0).get("availableBalance").asText());
         assertEquals(first.get("id").asText(), json.readTree(
@@ -77,6 +91,7 @@ class ApiFlowIntegrationTest {
         assertEquals(200, docs.statusCode());
         assertTrue(docs.body().contains("/api/v1/transfers"));
         assertTrue(docs.body().contains("/api/v1/test-deposits"));
+        assertTrue(docs.body().contains("/api/v1/audit-logs"));
         HttpResponse<String> swagger = get("/swagger-ui.html", null);
         assertTrue(swagger.statusCode() == 200 || swagger.statusCode() == 302);
     }

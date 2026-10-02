@@ -19,11 +19,12 @@ public class TokenService {
         this.encoder = encoder;
     }
 
-    public TokenResponse issue(UUID userId) {
+    public TokenResponse issue(UUID userId, String role) {
         Instant now = Instant.now();
         JwtClaimsSet claims = JwtClaimsSet.builder()
                 .issuer("bankcore")
                 .subject(userId.toString())
+                .claim("role", role)
                 .issuedAt(now)
                 .expiresAt(now.plus(ACCESS_TOKEN_LIFETIME))
                 .build();

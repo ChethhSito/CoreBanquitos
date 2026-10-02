@@ -41,21 +41,22 @@ public class IdentityService {
     public TokenService.TokenResponse login(String email, String password) {
         String normalizedEmail = email.trim().toLowerCase(Locale.ROOT);
         var users = jdbc.query("""
-                SELECT id, password_hash, status FROM users WHERE lower(email) = ?
+                SELECT id, password_hash, status, role FROM users WHERE lower(email) = ?
                 """, (rs, row) -> new LoginUser(
                 rs.getObject("id", UUID.class),
                 rs.getString("password_hash"),
-                rs.getString("status")), normalizedEmail);
+                rs.getString("status"),
+                rs.getString("role")), normalizedEmail);
         if (users.size() != 1 || !"ACTIVE".equals(users.getFirst().status())
                 || !passwords.matches(password, users.getFirst().passwordHash())) {
             throw new InvalidCredentialsException();
         }
-        return tokens.issue(users.getFirst().id());
+        return tokens.issue(users.getFirst().id(), users.getFirst().role());
     }
 
     public record RegistrationResult(UUID userId, UUID accountId, String email) {
     }
 
-    private record LoginUser(UUID id, String passwordHash, String status) {
+    private record LoginUser(UUID id, String passwordHash, String status, String role) {
     }
 }
