@@ -68,6 +68,8 @@ class ApiFlowIntegrationTest {
                 deposit.get("id").asText()));
         assertEquals(1, auditCount(alice.get("userId").asText(), "TRANSFER_COMPLETED",
                 first.get("id").asText()));
+        assertEquals(1, outboxCount(deposit.get("id").asText()));
+        assertEquals(1, outboxCount(first.get("id").asText()));
 
         assertEquals(401, get("/api/v1/audit-logs", null).statusCode());
         assertEquals(403, get("/api/v1/audit-logs", token).statusCode());
@@ -162,5 +164,10 @@ class ApiFlowIntegrationTest {
                 SELECT count(*) FROM audit_logs
                 WHERE actor_id = ? AND action = ? AND resource_id = ?
                 """, Integer.class, UUID.fromString(actorId), action, UUID.fromString(resourceId));
+    }
+
+    private int outboxCount(String transferId) {
+        return jdbc.queryForObject("SELECT count(*) FROM outbox_events WHERE aggregate_id = ?",
+                Integer.class, UUID.fromString(transferId));
     }
 }

@@ -4,6 +4,7 @@ import com.chethhsito.bankcore.account.Account;
 import com.chethhsito.bankcore.account.AccountJdbcRepository;
 import com.chethhsito.bankcore.audit.AuditLogJdbcRepository;
 import com.chethhsito.bankcore.ledger.LedgerJdbcRepository;
+import com.chethhsito.bankcore.outbox.OutboxJdbcRepository;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -20,13 +21,16 @@ public class TestDepositService {
     private final TransferJdbcRepository transfers;
     private final LedgerJdbcRepository ledger;
     private final AuditLogJdbcRepository audit;
+    private final OutboxJdbcRepository outbox;
 
     public TestDepositService(AccountJdbcRepository accounts, TransferJdbcRepository transfers,
-                              LedgerJdbcRepository ledger, AuditLogJdbcRepository audit) {
+                              LedgerJdbcRepository ledger, AuditLogJdbcRepository audit,
+                              OutboxJdbcRepository outbox) {
         this.accounts = accounts;
         this.transfers = transfers;
         this.ledger = ledger;
         this.audit = audit;
+        this.outbox = outbox;
     }
 
     @Transactional
@@ -58,6 +62,7 @@ public class TestDepositService {
         accounts.setBalance(destinationId, destination.availableBalance().add(amount));
         ledger.recordTransfer(result.id(), SYSTEM_ACCOUNT_ID, destinationId, amount);
         audit.testDepositCompleted(actorId, result.id());
+        outbox.recordTransferCompleted(result, actorId);
         return result;
     }
 }

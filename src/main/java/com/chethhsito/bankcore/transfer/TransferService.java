@@ -4,6 +4,7 @@ import com.chethhsito.bankcore.account.Account;
 import com.chethhsito.bankcore.account.AccountJdbcRepository;
 import com.chethhsito.bankcore.audit.AuditLogJdbcRepository;
 import com.chethhsito.bankcore.ledger.LedgerJdbcRepository;
+import com.chethhsito.bankcore.outbox.OutboxJdbcRepository;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -17,17 +18,20 @@ public class TransferService {
     private final TransferJdbcRepository transfers;
     private final LedgerJdbcRepository ledger;
     private final AuditLogJdbcRepository audit;
+    private final OutboxJdbcRepository outbox;
 
     public TransferService(
             AccountJdbcRepository accounts,
             TransferJdbcRepository transfers,
             LedgerJdbcRepository ledger,
-            AuditLogJdbcRepository audit
+            AuditLogJdbcRepository audit,
+            OutboxJdbcRepository outbox
     ) {
         this.accounts = accounts;
         this.transfers = transfers;
         this.ledger = ledger;
         this.audit = audit;
+        this.outbox = outbox;
     }
 
     @Transactional
@@ -61,6 +65,7 @@ public class TransferService {
         accounts.setBalance(destinationId, destination.availableBalance().add(command.amount()));
         ledger.recordTransfer(result.id(), sourceId, destinationId, command.amount());
         audit.transferCompleted(command.actorId(), result.id());
+        outbox.recordTransferCompleted(result, destination.ownerId());
         return result;
     }
 

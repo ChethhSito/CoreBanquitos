@@ -1,5 +1,3 @@
-param([switch]$Messaging)
-
 $ErrorActionPreference = 'Stop'
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $envFile = Join-Path $repoRoot '.env'
@@ -15,19 +13,8 @@ foreach ($line in Get-Content -LiteralPath $envFile) {
     [Environment]::SetEnvironmentVariable($parts[0], $parts[1], 'Process')
 }
 
-if (-not $env:BANKCORE_JWT_SECRET) {
-    $secretBytes = New-Object byte[] 32
-    $randomGenerator = [Security.Cryptography.RandomNumberGenerator]::Create()
-    try {
-        $randomGenerator.GetBytes($secretBytes)
-    } finally {
-        $randomGenerator.Dispose()
-    }
-    $env:BANKCORE_JWT_SECRET = [BitConverter]::ToString($secretBytes).Replace('-', '')
-    Add-Content -LiteralPath $envFile -Value "BANKCORE_JWT_SECRET=$env:BANKCORE_JWT_SECRET" -Encoding utf8
-}
-
-$env:SPRING_PROFILES_ACTIVE = if ($Messaging) { 'local,messaging-publisher' } else { 'local' }
+$env:SPRING_PROFILES_ACTIVE = 'notification-worker'
+$env:SPRING_MAIN_WEB_APPLICATION_TYPE = 'none'
 
 if (-not (Get-Command java -ErrorAction SilentlyContinue)) {
     $machineJavaHome = [Environment]::GetEnvironmentVariable('JAVA_HOME', 'Machine')

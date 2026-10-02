@@ -13,7 +13,7 @@ Este proyecto no procesa dinero real ni datos bancarios reales.
 
 ## Estado
 
-**MVP listo para probar localmente.** Incluye registro, login con JWT, cuentas, depósitos simulados, transferencias idempotentes y Swagger UI. La guía completa está en [banckCore_Planificacion.md](banckCore_Planificacion.md).
+**MVP listo para probar localmente.** Incluye registro, login con JWT, cuentas, depósitos simulados, transferencias idempotentes, auditoría, outbox y Swagger UI. La guía completa está en [banckCore_Planificacion.md](banckCore_Planificacion.md).
 
 ## Documentación
 
@@ -24,6 +24,7 @@ Este proyecto no procesa dinero real ni datos bancarios reales.
 - [Idempotencia y reintentos](docs/idempotencia.md)
 - [Auditoría de acciones](docs/auditoria.md)
 - [Sesiones y refresh tokens](docs/sesiones.md)
+- [Outbox y notificaciones simuladas](docs/eventos-y-notificaciones.md)
 
 Para consultar la auditoría desde Swagger, sigue la sección **Probar el rol auditor en local** de esa guía.
 

@@ -86,6 +86,7 @@ class TransferServiceIntegrationTest {
                 WHERE actor_id = ? AND action = 'TRANSFER_COMPLETED'
                   AND resource_type = 'TRANSFER' AND resource_id = ?
                 """, Integer.class, actorId, result.id()));
+        assertEquals(1, outboxCount(result.id()));
     }
 
     @Test
@@ -129,6 +130,7 @@ class TransferServiceIntegrationTest {
                     "SELECT count(*) FROM idempotency_keys WHERE user_id = ? AND key = ?",
                     Integer.class, actorId, key));
             assertEquals(0, transferAuditCount());
+            assertEquals(0, outboxCountForSource());
         } finally {
             jdbc.execute("DROP TRIGGER " + triggerName + " ON ledger_entries");
             jdbc.execute("DROP FUNCTION " + functionName + "()");
@@ -158,8 +160,40 @@ class TransferServiceIntegrationTest {
             assertEquals(new BigDecimal("0.00"), balance(destinationId));
             assertEquals(0, internalTransfers());
             assertEquals(0, transferAuditCount());
+            assertEquals(0, outboxCountForSource());
         } finally {
             jdbc.execute("DROP TRIGGER " + triggerName + " ON audit_logs");
+            jdbc.execute("DROP FUNCTION " + functionName + "()");
+        }
+    }
+
+    @Test
+    void outboxFailureRollsBackFinancialOperationAndAudit() {
+        String suffix = sourceId.toString().replace("-", "");
+        String functionName = "fail_outbox_" + suffix;
+        String triggerName = "fail_outbox_" + suffix;
+        jdbc.execute("""
+                CREATE FUNCTION %s() RETURNS trigger AS $$
+                BEGIN
+                    IF EXISTS (SELECT 1 FROM transfers
+                               WHERE id = NEW.aggregate_id AND source_account_id = '%s'::uuid) THEN
+                        RAISE EXCEPTION 'forced outbox failure';
+                    END IF;
+                    RETURN NEW;
+                END;
+                $$ LANGUAGE plpgsql
+                """.formatted(functionName, sourceId));
+        jdbc.execute("CREATE TRIGGER " + triggerName
+                + " BEFORE INSERT ON outbox_events FOR EACH ROW EXECUTE FUNCTION " + functionName + "()");
+        try {
+            assertThrows(RuntimeException.class, () -> idempotent.transfer(UUID.randomUUID(), command("60.00")));
+            assertEquals(new BigDecimal("100.00"), balance(sourceId));
+            assertEquals(new BigDecimal("0.00"), balance(destinationId));
+            assertEquals(0, internalTransfers());
+            assertEquals(0, transferAuditCount());
+            assertEquals(0, outboxCountForSource());
+        } finally {
+            jdbc.execute("DROP TRIGGER " + triggerName + " ON outbox_events");
             jdbc.execute("DROP FUNCTION " + functionName + "()");
         }
     }
@@ -172,6 +206,7 @@ class TransferServiceIntegrationTest {
         assertThrows(RuntimeException.class, () -> jdbc.update(
                 "DELETE FROM audit_logs WHERE resource_id = ?", result.id()));
         assertEquals(1, transferAuditCount());
+        assertEquals(1, outboxCount(result.id()));
     }
 
     @Test
@@ -210,6 +245,7 @@ class TransferServiceIntegrationTest {
         assertEquals(new BigDecimal("60.00"), balance(destinationId));
         assertEquals(1, internalTransfers());
         assertEquals(1, transferAuditCount());
+        assertEquals(1, outboxCount(first.transfer().id()));
     }
 
     @Test
@@ -308,5 +344,18 @@ class TransferServiceIntegrationTest {
                 SELECT count(*) FROM audit_logs
                 WHERE actor_id = ? AND action = 'TRANSFER_COMPLETED'
                 """, Integer.class, actorId);
+    }
+
+    private int outboxCount(UUID transferId) {
+        return jdbc.queryForObject("SELECT count(*) FROM outbox_events WHERE aggregate_id = ?",
+                Integer.class, transferId);
+    }
+
+    private int outboxCountForSource() {
+        return jdbc.queryForObject("""
+                SELECT count(*) FROM outbox_events o
+                JOIN transfers t ON t.id = o.aggregate_id
+                WHERE t.source_account_id = ? AND t.transfer_type = 'INTERNAL_TRANSFER'
+                """, Integer.class, sourceId);
     }
 }

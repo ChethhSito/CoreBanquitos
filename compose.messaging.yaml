@@ -1,0 +1,14 @@
+services:
+  rabbitmq:
+    image: rabbitmq:4.3.6-management
+    environment:
+      RABBITMQ_DEFAULT_USER: ${BANKCORE_RABBIT_USER:-bankcore}
+      RABBITMQ_DEFAULT_PASS: ${BANKCORE_RABBIT_PASSWORD:-bankcore-local-only}
+    ports:
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+
+volumes:
+  rabbitmq-data:

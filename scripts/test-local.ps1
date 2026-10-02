@@ -50,7 +50,7 @@ try {
 
         $reportFiles = @(Get-ChildItem -LiteralPath (Join-Path $repoRoot 'target\surefire-reports') -Filter 'TEST-*.xml' |
             Where-Object { $_.LastWriteTimeUtc -ge $testStartedAt.AddSeconds(-1) })
-        if ($reportFiles.Count -lt 2) { throw 'Expected integration test reports were not created.' }
+        if ($reportFiles.Count -lt 3) { throw 'Expected integration test reports were not created.' }
         $tests = 0; $failures = 0; $errors = 0; $skipped = 0
         foreach ($reportFile in $reportFiles) {
             [xml]$report = Get-Content -LiteralPath $reportFile.FullName -Raw
@@ -59,7 +59,7 @@ try {
             $errors += [int]$report.testsuite.errors
             $skipped += [int]$report.testsuite.skipped
         }
-        if ($tests -lt 9 -or $failures -ne 0 -or $errors -ne 0 -or $skipped -ne 0) {
+        if ($tests -lt 15 -or $failures -ne 0 -or $errors -ne 0 -or $skipped -ne 0) {
             throw "Unexpected test result: $tests tests, $failures failures, $errors errors, $skipped skipped."
         }
         $testSummary = "OK: $tests tests passed, 0 failures, 0 errors, 0 skipped."
