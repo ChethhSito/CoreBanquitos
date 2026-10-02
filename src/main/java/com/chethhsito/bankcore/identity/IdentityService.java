@@ -1,5 +1,6 @@
 package com.chethhsito.bankcore.identity;
 
+import com.chethhsito.bankcore.audit.AuditLogJdbcRepository;
 import java.util.Locale;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -12,11 +13,14 @@ public class IdentityService {
     private final JdbcTemplate jdbc;
     private final PasswordEncoder passwords;
     private final TokenService tokens;
+    private final AuditLogJdbcRepository audit;
 
-    public IdentityService(JdbcTemplate jdbc, PasswordEncoder passwords, TokenService tokens) {
+    public IdentityService(JdbcTemplate jdbc, PasswordEncoder passwords, TokenService tokens,
+                           AuditLogJdbcRepository audit) {
         this.jdbc = jdbc;
         this.passwords = passwords;
         this.tokens = tokens;
+        this.audit = audit;
     }
 
     @Transactional
@@ -30,6 +34,7 @@ public class IdentityService {
                 INSERT INTO accounts (id, owner_id, account_number, account_type, currency, available_balance, status)
                 VALUES (?, ?, ?, 'USER', 'PEN', 0, 'ACTIVE')
                 """, accountId, userId, accountId.toString());
+        audit.userRegistered(userId);
         return new RegistrationResult(userId, accountId, normalizedEmail);
     }
 

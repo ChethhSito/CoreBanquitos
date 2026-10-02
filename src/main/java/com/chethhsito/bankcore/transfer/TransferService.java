@@ -2,6 +2,7 @@ package com.chethhsito.bankcore.transfer;
 
 import com.chethhsito.bankcore.account.Account;
 import com.chethhsito.bankcore.account.AccountJdbcRepository;
+import com.chethhsito.bankcore.audit.AuditLogJdbcRepository;
 import com.chethhsito.bankcore.ledger.LedgerJdbcRepository;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -15,15 +16,18 @@ public class TransferService {
     private final AccountJdbcRepository accounts;
     private final TransferJdbcRepository transfers;
     private final LedgerJdbcRepository ledger;
+    private final AuditLogJdbcRepository audit;
 
     public TransferService(
             AccountJdbcRepository accounts,
             TransferJdbcRepository transfers,
-            LedgerJdbcRepository ledger
+            LedgerJdbcRepository ledger,
+            AuditLogJdbcRepository audit
     ) {
         this.accounts = accounts;
         this.transfers = transfers;
         this.ledger = ledger;
+        this.audit = audit;
     }
 
     @Transactional
@@ -56,6 +60,7 @@ public class TransferService {
         accounts.setBalance(sourceId, source.availableBalance().subtract(command.amount()));
         accounts.setBalance(destinationId, destination.availableBalance().add(command.amount()));
         ledger.recordTransfer(result.id(), sourceId, destinationId, command.amount());
+        audit.transferCompleted(command.actorId(), result.id());
         return result;
     }
 

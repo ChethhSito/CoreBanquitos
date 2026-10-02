@@ -81,6 +81,11 @@ class TransferServiceIntegrationTest {
                 JOIN ledger_transactions t ON t.id = e.ledger_transaction_id
                 WHERE t.transfer_id = ?
                 """, BigDecimal.class, result.id()));
+        assertEquals(1, jdbc.queryForObject("""
+                SELECT count(*) FROM audit_logs
+                WHERE actor_id = ? AND action = 'TRANSFER_COMPLETED'
+                  AND resource_type = 'TRANSFER' AND resource_id = ?
+                """, Integer.class, actorId, result.id()));
     }
 
     @Test
@@ -123,10 +128,50 @@ class TransferServiceIntegrationTest {
             assertEquals(0, jdbc.queryForObject(
                     "SELECT count(*) FROM idempotency_keys WHERE user_id = ? AND key = ?",
                     Integer.class, actorId, key));
+            assertEquals(0, transferAuditCount());
         } finally {
             jdbc.execute("DROP TRIGGER " + triggerName + " ON ledger_entries");
             jdbc.execute("DROP FUNCTION " + functionName + "()");
         }
+    }
+
+    @Test
+    void auditFailureRollsBackTransferLedgerAndBalances() {
+        String suffix = sourceId.toString().replace("-", "");
+        String functionName = "fail_audit_" + suffix;
+        String triggerName = "fail_audit_" + suffix;
+        jdbc.execute("""
+                CREATE FUNCTION %s() RETURNS trigger AS $$
+                BEGIN
+                    IF NEW.actor_id = '%s'::uuid THEN
+                        RAISE EXCEPTION 'forced audit failure';
+                    END IF;
+                    RETURN NEW;
+                END;
+                $$ LANGUAGE plpgsql
+                """.formatted(functionName, actorId));
+        jdbc.execute("CREATE TRIGGER " + triggerName
+                + " BEFORE INSERT ON audit_logs FOR EACH ROW EXECUTE FUNCTION " + functionName + "()");
+        try {
+            assertThrows(RuntimeException.class, () -> idempotent.transfer(UUID.randomUUID(), command("60.00")));
+            assertEquals(new BigDecimal("100.00"), balance(sourceId));
+            assertEquals(new BigDecimal("0.00"), balance(destinationId));
+            assertEquals(0, internalTransfers());
+            assertEquals(0, transferAuditCount());
+        } finally {
+            jdbc.execute("DROP TRIGGER " + triggerName + " ON audit_logs");
+            jdbc.execute("DROP FUNCTION " + functionName + "()");
+        }
+    }
+
+    @Test
+    void auditLogCannotBeChangedOrDeleted() {
+        TransferResult result = service.transfer(command("60.00"));
+        assertThrows(RuntimeException.class, () -> jdbc.update(
+                "UPDATE audit_logs SET action = 'TEST_DEPOSIT_COMPLETED' WHERE resource_id = ?", result.id()));
+        assertThrows(RuntimeException.class, () -> jdbc.update(
+                "DELETE FROM audit_logs WHERE resource_id = ?", result.id()));
+        assertEquals(1, transferAuditCount());
     }
 
     @Test
@@ -164,6 +209,7 @@ class TransferServiceIntegrationTest {
         assertEquals(new BigDecimal("40.00"), balance(sourceId));
         assertEquals(new BigDecimal("60.00"), balance(destinationId));
         assertEquals(1, internalTransfers());
+        assertEquals(1, transferAuditCount());
     }
 
     @Test
@@ -255,5 +301,12 @@ class TransferServiceIntegrationTest {
                 SELECT count(*) FROM transfers WHERE source_account_id = ?
                 AND destination_account_id = ? AND transfer_type = 'INTERNAL_TRANSFER'
                 """, Integer.class, sourceId, destinationId);
+    }
+
+    private int transferAuditCount() {
+        return jdbc.queryForObject("""
+                SELECT count(*) FROM audit_logs
+                WHERE actor_id = ? AND action = 'TRANSFER_COMPLETED'
+                """, Integer.class, actorId);
     }
 }

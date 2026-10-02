@@ -2,6 +2,7 @@ package com.chethhsito.bankcore.transfer;
 
 import com.chethhsito.bankcore.account.Account;
 import com.chethhsito.bankcore.account.AccountJdbcRepository;
+import com.chethhsito.bankcore.audit.AuditLogJdbcRepository;
 import com.chethhsito.bankcore.ledger.LedgerJdbcRepository;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -18,12 +19,14 @@ public class TestDepositService {
     private final AccountJdbcRepository accounts;
     private final TransferJdbcRepository transfers;
     private final LedgerJdbcRepository ledger;
+    private final AuditLogJdbcRepository audit;
 
     public TestDepositService(AccountJdbcRepository accounts, TransferJdbcRepository transfers,
-                              LedgerJdbcRepository ledger) {
+                              LedgerJdbcRepository ledger, AuditLogJdbcRepository audit) {
         this.accounts = accounts;
         this.transfers = transfers;
         this.ledger = ledger;
+        this.audit = audit;
     }
 
     @Transactional
@@ -54,6 +57,7 @@ public class TestDepositService {
         accounts.setBalance(SYSTEM_ACCOUNT_ID, system.availableBalance().subtract(amount));
         accounts.setBalance(destinationId, destination.availableBalance().add(amount));
         ledger.recordTransfer(result.id(), SYSTEM_ACCOUNT_ID, destinationId, amount);
+        audit.testDepositCompleted(actorId, result.id());
         return result;
     }
 }

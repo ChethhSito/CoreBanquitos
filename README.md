@@ -22,6 +22,7 @@ Este proyecto no procesa dinero real ni datos bancarios reales.
 - [Contrato inicial de transferencias](docs/openapi.yaml). El contrato actualizado se genera al ejecutar la aplicación en `/v3/api-docs`.
 - [Flujo de una transferencia](docs/flujo-transferencia.md)
 - [Idempotencia y reintentos](docs/idempotencia.md)
+- [Auditoría de acciones](docs/auditoria.md)
 
 ## Ejecutar en Windows
 

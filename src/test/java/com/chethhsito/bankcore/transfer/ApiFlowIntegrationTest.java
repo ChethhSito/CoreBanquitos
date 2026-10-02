@@ -10,8 +10,10 @@ import java.net.http.HttpResponse;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -30,6 +32,7 @@ class ApiFlowIntegrationTest {
     }
 
     @Value("${local.server.port}") int port;
+    @Autowired JdbcTemplate jdbc;
     private final HttpClient http = HttpClient.newHttpClient();
     private final ObjectMapper json = new ObjectMapper();
 
@@ -47,7 +50,7 @@ class ApiFlowIntegrationTest {
         String token = login.get("accessToken").asText();
 
         assertEquals(401, get("/api/v1/accounts", null).statusCode());
-        post("/api/v1/test-deposits", "{\"destinationAccountId\":\"" + sourceId
+        JsonNode deposit = post("/api/v1/test-deposits", "{\"destinationAccountId\":\"" + sourceId
                 + "\",\"amount\":\"100.00\"}", token, null, 201);
 
         String key = UUID.randomUUID().toString();
@@ -58,6 +61,12 @@ class ApiFlowIntegrationTest {
         assertEquals(first.get("id").asText(), retry.get("id").asText());
         JsonNode conflict = post("/api/v1/transfers", body.replace("60.00", "61.00"), token, key, 409);
         assertEquals("IDEMPOTENCY_CONFLICT", conflict.get("code").asText());
+        assertEquals(1, auditCount(alice.get("userId").asText(), "USER_REGISTERED",
+                alice.get("userId").asText()));
+        assertEquals(1, auditCount(alice.get("userId").asText(), "TEST_DEPOSIT_COMPLETED",
+                deposit.get("id").asText()));
+        assertEquals(1, auditCount(alice.get("userId").asText(), "TRANSFER_COMPLETED",
+                first.get("id").asText()));
 
         JsonNode accounts = json.readTree(get("/api/v1/accounts", token).body());
         assertEquals("40.00", accounts.get(0).get("availableBalance").asText());
@@ -87,5 +96,12 @@ class ApiFlowIntegrationTest {
         HttpRequest.Builder request = HttpRequest.newBuilder(URI.create("http://localhost:" + port + path)).GET();
         if (token != null) request.header("Authorization", "Bearer " + token);
         return http.send(request.build(), HttpResponse.BodyHandlers.ofString());
+    }
+
+    private int auditCount(String actorId, String action, String resourceId) {
+        return jdbc.queryForObject("""
+                SELECT count(*) FROM audit_logs
+                WHERE actor_id = ? AND action = ? AND resource_id = ?
+                """, Integer.class, UUID.fromString(actorId), action, UUID.fromString(resourceId));
     }
 }
