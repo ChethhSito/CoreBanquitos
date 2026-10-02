@@ -1,6 +1,7 @@
 package com.chethhsito.bankcore.transfer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.net.URI;
@@ -92,8 +93,51 @@ class ApiFlowIntegrationTest {
         assertTrue(docs.body().contains("/api/v1/transfers"));
         assertTrue(docs.body().contains("/api/v1/test-deposits"));
         assertTrue(docs.body().contains("/api/v1/audit-logs"));
+        assertTrue(docs.body().contains("/api/v1/auth/refresh"));
         HttpResponse<String> swagger = get("/swagger-ui.html", null);
         assertTrue(swagger.statusCode() == 200 || swagger.statusCode() == 302);
+    }
+
+    @Test
+    void refreshTokensRotateDetectReplayAndLogout() throws Exception {
+        String email = "session-" + UUID.randomUUID() + "@example.com";
+        JsonNode user = post("/api/v1/auth/register", "{\"email\":\"" + email
+                + "\",\"password\":\"examplePassword123\"}", null, null, 201);
+        String loginBody = "{\"email\":\"" + email + "\",\"password\":\"examplePassword123\"}";
+        JsonNode first = post("/api/v1/auth/login", loginBody, null, null, 200);
+        String originalRefresh = first.get("refreshToken").asText();
+        String independentRefresh = post("/api/v1/auth/login", loginBody, null, null, 200)
+                .get("refreshToken").asText();
+        assertEquals(200, get("/api/v1/accounts", first.get("accessToken").asText()).statusCode());
+
+        JsonNode rotated = post("/api/v1/auth/refresh", refreshBody(originalRefresh), null, null, 200);
+        String newRefresh = rotated.get("refreshToken").asText();
+        assertNotEquals(originalRefresh, newRefresh);
+        assertEquals(200, get("/api/v1/accounts", rotated.get("accessToken").asText()).statusCode());
+        assertEquals("INVALID_REFRESH_TOKEN", post("/api/v1/auth/refresh",
+                refreshBody(originalRefresh), null, null, 401).get("code").asText());
+        assertEquals("INVALID_REFRESH_TOKEN", post("/api/v1/auth/refresh",
+                refreshBody(newRefresh), null, null, 401).get("code").asText());
+
+        String logoutToken = post("/api/v1/auth/refresh", refreshBody(independentRefresh), null, null, 200)
+                .get("refreshToken").asText();
+        post("/api/v1/auth/logout", refreshBody(logoutToken), null, null, 204);
+        assertEquals("INVALID_REFRESH_TOKEN", post("/api/v1/auth/refresh",
+                refreshBody(logoutToken), null, null, 401).get("code").asText());
+
+        String expiringToken = post("/api/v1/auth/login", loginBody, null, null, 200)
+                .get("refreshToken").asText();
+        jdbc.update("""
+                UPDATE refresh_tokens
+                SET created_at = now() - interval '8 days', expires_at = now() - interval '1 day'
+                WHERE user_id = ? AND consumed_at IS NULL AND revoked_at IS NULL
+                """, UUID.fromString(user.get("userId").asText()));
+        assertEquals("INVALID_REFRESH_TOKEN", post("/api/v1/auth/refresh",
+                refreshBody(expiringToken), null, null, 401).get("code").asText());
+    }
+
+    private static String refreshBody(String token) {
+        return "{\"refreshToken\":\"" + token + "\"}";
     }
 
     private JsonNode post(String path, String body, String token, String key, int expectedStatus) throws Exception {
@@ -104,7 +148,7 @@ class ApiFlowIntegrationTest {
         if (key != null) request.header("Idempotency-Key", key);
         HttpResponse<String> response = http.send(request.build(), HttpResponse.BodyHandlers.ofString());
         assertEquals(expectedStatus, response.statusCode(), response.body());
-        return json.readTree(response.body());
+        return response.body().isEmpty() ? null : json.readTree(response.body());
     }
 
     private HttpResponse<String> get(String path, String token) throws Exception {

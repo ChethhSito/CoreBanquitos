@@ -12,14 +12,14 @@ import org.springframework.transaction.annotation.Transactional;
 public class IdentityService {
     private final JdbcTemplate jdbc;
     private final PasswordEncoder passwords;
-    private final TokenService tokens;
+    private final SessionService sessions;
     private final AuditLogJdbcRepository audit;
 
-    public IdentityService(JdbcTemplate jdbc, PasswordEncoder passwords, TokenService tokens,
+    public IdentityService(JdbcTemplate jdbc, PasswordEncoder passwords, SessionService sessions,
                            AuditLogJdbcRepository audit) {
         this.jdbc = jdbc;
         this.passwords = passwords;
-        this.tokens = tokens;
+        this.sessions = sessions;
         this.audit = audit;
     }
 
@@ -38,7 +38,7 @@ public class IdentityService {
         return new RegistrationResult(userId, accountId, normalizedEmail);
     }
 
-    public TokenService.TokenResponse login(String email, String password) {
+    public SessionService.SessionTokens login(String email, String password) {
         String normalizedEmail = email.trim().toLowerCase(Locale.ROOT);
         var users = jdbc.query("""
                 SELECT id, password_hash, status, role FROM users WHERE lower(email) = ?
@@ -51,7 +51,7 @@ public class IdentityService {
                 || !passwords.matches(password, users.getFirst().passwordHash())) {
             throw new InvalidCredentialsException();
         }
-        return tokens.issue(users.getFirst().id(), users.getFirst().role());
+        return sessions.start(users.getFirst().id(), users.getFirst().role());
     }
 
     public record RegistrationResult(UUID userId, UUID accountId, String email) {

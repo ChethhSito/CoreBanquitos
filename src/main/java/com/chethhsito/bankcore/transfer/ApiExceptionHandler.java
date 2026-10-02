@@ -1,6 +1,7 @@
 package com.chethhsito.bankcore.transfer;
 
 import com.chethhsito.bankcore.identity.InvalidCredentialsException;
+import com.chethhsito.bankcore.identity.InvalidRefreshTokenException;
 import jakarta.validation.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -35,6 +36,12 @@ public class ApiExceptionHandler {
     ResponseEntity<ErrorResponse> invalidCredentials() {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new ErrorResponse(
                 "INVALID_CREDENTIALS", "Correo o password incorrectos."));
+    }
+
+    @ExceptionHandler(InvalidRefreshTokenException.class)
+    ResponseEntity<ErrorResponse> invalidRefreshToken() {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new ErrorResponse(
+                "INVALID_REFRESH_TOKEN", "Refresh token invalido o vencido."));
     }
 
     @ExceptionHandler(DataIntegrityViolationException.class)

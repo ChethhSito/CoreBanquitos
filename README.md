@@ -23,6 +23,7 @@ Este proyecto no procesa dinero real ni datos bancarios reales.
 - [Flujo de una transferencia](docs/flujo-transferencia.md)
 - [Idempotencia y reintentos](docs/idempotencia.md)
 - [Auditoría de acciones](docs/auditoria.md)
+- [Sesiones y refresh tokens](docs/sesiones.md)
 
 Para consultar la auditoría desde Swagger, sigue la sección **Probar el rol auditor en local** de esa guía.
 
