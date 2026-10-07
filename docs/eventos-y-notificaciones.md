@@ -8,7 +8,7 @@ El worker funciona como un segundo proceso de la misma aplicación Java, sin ser
 
 ## Probar con RabbitMQ local
 
-Necesitas Docker Desktop ejecutándose. En `D:\core_bank`, abre tres terminales PowerShell:
+Necesitas PostgreSQL local y Docker Desktop o Podman ejecutándose. En `D:\core_bank`, abre tres terminales PowerShell. Para iniciar RabbitMQ con Docker Compose:
 
 ```powershell
 # Terminal 1: RabbitMQ
@@ -20,6 +20,14 @@ docker compose -f compose.messaging.yaml up -d
 # Terminal 3: worker de notificaciones
 .\scripts\start-notification-worker.ps1
 ```
+
+Si usas Podman en Windows, inicia su máquina Linux una vez con `podman machine init` y, al comenzar cada sesión, con `podman machine start`. Cuando tengas un proveedor de Compose instalado, puedes usar `podman compose -f compose.messaging.yaml up -d`. Si `podman compose` indica que falta un proveedor, inicia el servicio directamente:
+
+```powershell
+podman run -d --name bankcore-rabbitmq -p 127.0.0.1:5672:5672 -p 127.0.0.1:15672:15672 -e RABBITMQ_DEFAULT_USER=bankcore -e RABBITMQ_DEFAULT_PASS=bankcore-local-only -v bankcore-rabbitmq-data:/var/lib/rabbitmq docker.io/library/rabbitmq:4.3.6-management
+```
+
+Después usa las terminales 2 y 3 del bloque anterior. Para sesiones posteriores, `podman start bankcore-rabbitmq` vuelve a arrancar el contenedor; `podman stop bankcore-rabbitmq` lo detiene.
 
 En Swagger (`http://localhost:8080/swagger-ui.html`) realiza un depósito simulado o una transferencia. La migración `V5` se aplica al arrancar. En pgAdmin puedes revisar:
 
