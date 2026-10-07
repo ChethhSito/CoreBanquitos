@@ -1,5 +1,6 @@
 package com.chethhsito.bankcore.transfer;
 
+import com.chethhsito.bankcore.observability.BankcoreMetrics;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.validation.Valid;
@@ -9,6 +10,8 @@ import java.math.BigDecimal;
 import java.net.URI;
 import java.time.Instant;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -25,12 +28,16 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/transfers")
 @SecurityRequirement(name = "bearerAuth")
 public class TransferController {
+    private static final Logger log = LoggerFactory.getLogger(TransferController.class);
     private final IdempotentTransferService idempotent;
     private final TransferJdbcRepository transfers;
+    private final BankcoreMetrics metrics;
 
-    public TransferController(IdempotentTransferService idempotent, TransferJdbcRepository transfers) {
+    public TransferController(IdempotentTransferService idempotent, TransferJdbcRepository transfers,
+                              BankcoreMetrics metrics) {
         this.idempotent = idempotent;
         this.transfers = transfers;
+        this.metrics = metrics;
     }
 
     @PostMapping
@@ -45,10 +52,14 @@ public class TransferController {
                 UUID.fromString(jwt.getSubject()), request.sourceAccountId(),
                 request.destinationAccountId(), new BigDecimal(request.amount()), request.currency()));
         if (attempt.status() == 422) {
+            if (!attempt.replayed()) metrics.transferRejected();
+            log.info("Transfer rejected: code={} replayed={}", attempt.errorCode(), attempt.replayed());
             return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
                     .body(new ApiExceptionHandler.ErrorResponse(attempt.errorCode(), attempt.errorMessage()));
         }
         TransferResponse body = TransferResponse.from(attempt.transfer());
+        if (!attempt.replayed()) metrics.transferCompleted();
+        log.info("Transfer {} completed; replayed={}", body.id(), attempt.replayed());
         return ResponseEntity.created(URI.create("/api/v1/transfers/" + body.id())).body(body);
     }
 

@@ -13,7 +13,7 @@ public class NotificationWorkerService {
     }
 
     @Transactional
-    public void process(TransferCompletedEvent event) {
+    public boolean process(TransferCompletedEvent event) {
         if (event == null || event.eventId() == null || event.transferId() == null
                 || event.recipientUserId() == null) {
             throw new IllegalArgumentException("Invalid transfer event");
@@ -21,10 +21,13 @@ public class NotificationWorkerService {
         int inserted = jdbc.update("""
                 INSERT INTO processed_events (event_id) VALUES (?) ON CONFLICT DO NOTHING
                 """, event.eventId());
-        if (inserted == 0) return;
+        if (inserted == 0) {
+            return false;
+        }
         jdbc.update("""
                 INSERT INTO notification_deliveries (event_id, transfer_id, recipient_user_id)
                 VALUES (?, ?, ?)
                 """, event.eventId(), event.transferId(), event.recipientUserId());
+        return true;
     }
 }

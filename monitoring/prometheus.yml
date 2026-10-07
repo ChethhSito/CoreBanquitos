@@ -1,0 +1,7 @@
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: bankcore-metrics
+    static_configs:
+      - targets: ['bankcore-otel-collector:8889']

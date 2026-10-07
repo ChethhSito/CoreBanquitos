@@ -1,4 +1,4 @@
-param([switch]$Messaging)
+param([switch]$Messaging, [switch]$Tracing)
 
 $ErrorActionPreference = 'Stop'
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
@@ -28,6 +28,11 @@ if (-not $env:BANKCORE_JWT_SECRET) {
 }
 
 $env:SPRING_PROFILES_ACTIVE = if ($Messaging) { 'local,messaging-publisher' } else { 'local' }
+if ($Tracing) {
+    $env:BANKCORE_TRACING_EXPORT_ENABLED = 'true'
+    $env:BANKCORE_METRICS_EXPORT_ENABLED = 'true'
+}
+$env:OTEL_SERVICE_NAME = 'bankcore-api'
 
 if (-not (Get-Command java -ErrorAction SilentlyContinue)) {
     $machineJavaHome = [Environment]::GetEnvironmentVariable('JAVA_HOME', 'Machine')

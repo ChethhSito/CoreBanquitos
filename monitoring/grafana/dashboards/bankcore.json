@@ -1,0 +1,45 @@
+{
+  "uid": "bankcore-overview",
+  "title": "BankCore - Operacion local",
+  "tags": ["bankcore"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "time": {"from": "now-1h", "to": "now"},
+  "panels": [
+    {
+      "id": 1, "type": "stat", "title": "Eventos pendientes", "datasource": {"type": "prometheus", "uid": "bankcore-prometheus"},
+      "gridPos": {"h": 5, "w": 6, "x": 0, "y": 0},
+      "targets": [{"expr": "bankcore_outbox_pending{service_name=\"bankcore-api\"}", "refId": "A"}]
+    },
+    {
+      "id": 2, "type": "stat", "title": "Notificaciones simuladas", "datasource": {"type": "prometheus", "uid": "bankcore-prometheus"},
+      "gridPos": {"h": 5, "w": 6, "x": 6, "y": 0},
+      "targets": [{"expr": "bankcore_notification_deliveries{service_name=\"bankcore-api\"}", "refId": "A"}]
+    },
+    {
+      "id": 3, "type": "stat", "title": "Reintentos de publicacion (1h)", "datasource": {"type": "prometheus", "uid": "bankcore-prometheus"},
+      "gridPos": {"h": 5, "w": 6, "x": 12, "y": 0},
+      "targets": [{"expr": "increase(bankcore_outbox_retry_total{service_name=\"bankcore-api\"}[1h])", "refId": "A"}]
+    },
+    {
+      "id": 4, "type": "stat", "title": "Colector disponible", "datasource": {"type": "prometheus", "uid": "bankcore-prometheus"},
+      "gridPos": {"h": 5, "w": 6, "x": 18, "y": 0},
+      "targets": [{"expr": "up{job=\"bankcore-metrics\"}", "refId": "A"}]
+    },
+    {
+      "id": 5, "type": "timeseries", "title": "Transferencias y depositos por minuto", "datasource": {"type": "prometheus", "uid": "bankcore-prometheus"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 5},
+      "targets": [
+        {"expr": "sum(rate(bankcore_transfer_completed_total{service_name=\"bankcore-api\"}[5m])) * 60", "legendFormat": "Transferencias", "refId": "A"},
+        {"expr": "sum(rate(bankcore_deposit_completed_total{service_name=\"bankcore-api\"}[5m])) * 60", "legendFormat": "Depositos", "refId": "B"}
+      ]
+    },
+    {
+      "id": 6, "type": "timeseries", "title": "Latencia HTTP p95", "datasource": {"type": "prometheus", "uid": "bankcore-prometheus"},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 5},
+      "targets": [{"expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_requests_milliseconds_bucket{service_name=\"bankcore-api\",uri!~\"/actuator.*\"}[5m]))) / 1000", "legendFormat": "p95 (segundos)", "refId": "A"}]
+    }
+  ]
+}

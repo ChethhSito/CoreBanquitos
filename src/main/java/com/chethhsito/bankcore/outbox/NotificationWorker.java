@@ -1,6 +1,9 @@
 package com.chethhsito.bankcore.outbox;
 
+import com.chethhsito.bankcore.observability.BankcoreMetrics;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.amqp.AmqpRejectAndDontRequeueException;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
@@ -11,12 +14,16 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 @Profile("notification-worker")
 public class NotificationWorker {
+    private static final Logger log = LoggerFactory.getLogger(NotificationWorker.class);
     private final ObjectMapper json;
     private final NotificationWorkerService notifications;
+    private final BankcoreMetrics metrics;
 
-    public NotificationWorker(ObjectMapper json, NotificationWorkerService notifications) {
+    public NotificationWorker(ObjectMapper json, NotificationWorkerService notifications,
+                              BankcoreMetrics metrics) {
         this.json = json;
         this.notifications = notifications;
+        this.metrics = metrics;
     }
 
     @RabbitListener(queues = RabbitTopology.NOTIFICATIONS_QUEUE)
@@ -31,6 +38,12 @@ public class NotificationWorker {
         } catch (Exception error) {
             throw new AmqpRejectAndDontRequeueException("Invalid notification event", error);
         }
-        notifications.process(event);
+        if (notifications.process(event)) {
+            metrics.notificationProcessed();
+            log.info("Notification recorded for event {} transfer {}", event.eventId(), event.transferId());
+        } else {
+            metrics.notificationDuplicate();
+            log.info("Duplicate notification event {} ignored", event.eventId());
+        }
     }
 }

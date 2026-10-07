@@ -1,3 +1,5 @@
+param([switch]$Tracing)
+
 $ErrorActionPreference = 'Stop'
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $envFile = Join-Path $repoRoot '.env'
@@ -15,6 +17,11 @@ foreach ($line in Get-Content -LiteralPath $envFile) {
 
 $env:SPRING_PROFILES_ACTIVE = 'notification-worker'
 $env:SPRING_MAIN_WEB_APPLICATION_TYPE = 'none'
+if ($Tracing) {
+    $env:BANKCORE_TRACING_EXPORT_ENABLED = 'true'
+    $env:BANKCORE_METRICS_EXPORT_ENABLED = 'true'
+}
+$env:OTEL_SERVICE_NAME = 'bankcore-notification-worker'
 
 if (-not (Get-Command java -ErrorAction SilentlyContinue)) {
     $machineJavaHome = [Environment]::GetEnvironmentVariable('JAVA_HOME', 'Machine')

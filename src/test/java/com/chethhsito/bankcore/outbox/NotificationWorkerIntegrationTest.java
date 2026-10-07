@@ -7,6 +7,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
+import com.chethhsito.bankcore.observability.BankcoreMetrics;
 import com.chethhsito.bankcore.transfer.TransferResult;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
@@ -42,6 +43,7 @@ class NotificationWorkerIntegrationTest {
     @Autowired JdbcTemplate jdbc;
     @Autowired OutboxJdbcRepository outbox;
     @Autowired NotificationWorker worker;
+    @Autowired BankcoreMetrics metrics;
 
     @Test
     void duplicateMessageCreatesOneSimulatedNotification() {
@@ -72,7 +74,7 @@ class NotificationWorkerIntegrationTest {
         createEvent();
         RabbitEventPublisher failingBroker = mock(RabbitEventPublisher.class);
         doThrow(new IllegalStateException("broker unavailable")).when(failingBroker).publish(any());
-        new OutboxPublisher(outbox, failingBroker).dispatch();
+        new OutboxPublisher(outbox, failingBroker, metrics).dispatch();
 
         ArgumentCaptor<OutboxJdbcRepository.ClaimedEvent> sent =
                 ArgumentCaptor.forClass(OutboxJdbcRepository.ClaimedEvent.class);
