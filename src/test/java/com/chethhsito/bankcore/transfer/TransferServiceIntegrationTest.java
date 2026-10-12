@@ -1,5 +1,7 @@
 package com.chethhsito.bankcore.transfer;
 
+import com.chethhsito.bankcore.support.PostgresIntegrationTest;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -10,26 +12,17 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.ArrayList;
+import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
-@EnabledIfEnvironmentVariable(named = "BANKCORE_TEST_DB_URL", matches = ".+")
-class TransferServiceIntegrationTest {
+class TransferServiceIntegrationTest extends PostgresIntegrationTest {
     private static final UUID SYSTEM_ACCOUNT_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
-
-    @DynamicPropertySource
-    static void testDatabase(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", () -> System.getenv("BANKCORE_TEST_DB_URL"));
-        registry.add("spring.datasource.username", () -> System.getenv("BANKCORE_TEST_DB_USER"));
-        registry.add("spring.datasource.password", () -> System.getenv("BANKCORE_TEST_DB_PASSWORD"));
-    }
 
     @Autowired TransferService service;
     @Autowired IdempotentTransferService idempotent;
@@ -97,6 +90,112 @@ class TransferServiceIntegrationTest {
         assertEquals(new BigDecimal("100.00"), balance(sourceId));
         assertEquals(new BigDecimal("0.00"), balance(destinationId));
         assertEquals(0, internalTransfers());
+    }
+
+    @Test
+    void exactBalanceCanBeTransferred() {
+        TransferResult result = service.transfer(command("100.00"));
+        assertEquals(new BigDecimal("0.00"), balance(sourceId));
+        assertEquals(new BigDecimal("100.00"), balance(destinationId));
+        assertEquals(1, internalTransfers());
+        assertEquals(1, outboxCount(result.id()));
+    }
+
+    @Test
+    void invalidRequestsAndAccountsLeaveBalancesUntouched() {
+        assertRejected("INVALID_REQUEST", command("0.00"));
+        assertRejected("INVALID_REQUEST", command("-1.00"));
+        assertRejected("INVALID_REQUEST", command("1.001"));
+        assertRejected("INVALID_REQUEST",
+                new TransferCommand(actorId, sourceId, destinationId, new BigDecimal("1.00"), "USD"));
+        assertRejected("SAME_SOURCE_DESTINATION",
+                new TransferCommand(actorId, sourceId, sourceId, new BigDecimal("1.00"), "PEN"));
+        assertRejected("ACCOUNT_NOT_FOUND",
+                new TransferCommand(actorId, sourceId, UUID.randomUUID(), new BigDecimal("1.00"), "PEN"));
+        assertRejected("FORBIDDEN",
+                new TransferCommand(UUID.randomUUID(), sourceId, destinationId, new BigDecimal("1.00"), "PEN"));
+        jdbc.update("UPDATE accounts SET status = 'BLOCKED' WHERE id = ?", destinationId);
+        assertRejected("ACCOUNT_INACTIVE", command("1.00"));
+
+        assertEquals(new BigDecimal("100.00"), balance(sourceId));
+        assertEquals(new BigDecimal("0.00"), balance(destinationId));
+        assertEquals(0, internalTransfers());
+        assertEquals(0, transferAuditCount());
+        assertEquals(0, outboxCountForSource());
+    }
+
+    @Test
+    void hundredConcurrentTransfersPreserveMoneyAndLedger() throws Exception {
+        ExecutorService executor = Executors.newFixedThreadPool(20);
+        CountDownLatch start = new CountDownLatch(1);
+        List<Future<TransferResult>> results = new ArrayList<>();
+        try {
+            for (int i = 0; i < 100; i++) {
+                results.add(executor.submit(() -> {
+                    start.await();
+                    return service.transfer(command("1.00"));
+                }));
+            }
+            start.countDown();
+            for (Future<TransferResult> result : results) {
+                assertEquals(new BigDecimal("1.00"), result.get(90, TimeUnit.SECONDS).amount());
+            }
+            assertEquals(new BigDecimal("0.00"), balance(sourceId));
+            assertEquals(new BigDecimal("100.00"), balance(destinationId));
+            assertEquals(100, internalTransfers());
+            assertEquals(100, transferAuditCount());
+            assertEquals(100, outboxCountForSource());
+            assertEquals(200, jdbc.queryForObject("""
+                    SELECT count(*) FROM ledger_entries e
+                    JOIN ledger_transactions l ON l.id = e.ledger_transaction_id
+                    JOIN transfers t ON t.id = l.transfer_id
+                    WHERE t.source_account_id = ? AND t.transfer_type = 'INTERNAL_TRANSFER'
+                    """, Integer.class, sourceId));
+            assertEquals(new BigDecimal("0.00"), jdbc.queryForObject("""
+                    SELECT sum(e.signed_amount) FROM ledger_entries e
+                    JOIN ledger_transactions l ON l.id = e.ledger_transaction_id
+                    JOIN transfers t ON t.id = l.transfer_id
+                    WHERE t.source_account_id = ? AND t.transfer_type = 'INTERNAL_TRANSFER'
+                    """, BigDecimal.class, sourceId));
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void crossedTransfersFinishWithoutDeadlock() throws Exception {
+        jdbc.update("UPDATE accounts SET owner_id = ? WHERE id = ?", actorId, destinationId);
+        service.transfer(command("50.00"));
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        CountDownLatch start = new CountDownLatch(1);
+        try {
+            Future<TransferResult> forward = executor.submit(() -> {
+                start.await();
+                return service.transfer(command("40.00"));
+            });
+            Future<TransferResult> backward = executor.submit(() -> {
+                start.await();
+                return service.transfer(new TransferCommand(actorId, destinationId, sourceId,
+                        new BigDecimal("30.00"), "PEN"));
+            });
+            start.countDown();
+            forward.get(15, TimeUnit.SECONDS);
+            backward.get(15, TimeUnit.SECONDS);
+            assertEquals(new BigDecimal("40.00"), balance(sourceId));
+            assertEquals(new BigDecimal("60.00"), balance(destinationId));
+            assertEquals(2, internalTransfers());
+            assertEquals(1, jdbc.queryForObject("""
+                    SELECT count(*) FROM transfers WHERE source_account_id = ?
+                    AND destination_account_id = ? AND transfer_type = 'INTERNAL_TRANSFER'
+                    """, Integer.class, destinationId, sourceId));
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    private void assertRejected(String code, TransferCommand transfer) {
+        assertEquals(code, assertThrows(TransferRejectedException.class,
+                () -> service.transfer(transfer)).code());
     }
 
     @Test

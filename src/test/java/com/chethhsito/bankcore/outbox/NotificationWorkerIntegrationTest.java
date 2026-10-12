@@ -1,5 +1,7 @@
 package com.chethhsito.bankcore.outbox;
 
+import com.chethhsito.bankcore.support.PostgresIntegrationTest;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
@@ -14,7 +16,6 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.mockito.ArgumentCaptor;
 import org.springframework.amqp.AmqpRejectAndDontRequeueException;
 import org.springframework.amqp.core.Message;
@@ -23,22 +24,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE,
         properties = "spring.rabbitmq.listener.simple.auto-startup=false")
 @ActiveProfiles("notification-worker")
-@EnabledIfEnvironmentVariable(named = "BANKCORE_TEST_DB_URL", matches = ".+")
-class NotificationWorkerIntegrationTest {
+class NotificationWorkerIntegrationTest extends PostgresIntegrationTest {
     private static final UUID SYSTEM_ACCOUNT_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
-
-    @DynamicPropertySource
-    static void testDatabase(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", () -> System.getenv("BANKCORE_TEST_DB_URL"));
-        registry.add("spring.datasource.username", () -> System.getenv("BANKCORE_TEST_DB_USER"));
-        registry.add("spring.datasource.password", () -> System.getenv("BANKCORE_TEST_DB_PASSWORD"));
-    }
 
     @Autowired JdbcTemplate jdbc;
     @Autowired OutboxJdbcRepository outbox;
@@ -52,6 +43,7 @@ class NotificationWorkerIntegrationTest {
                 Integer.class, eventId));
 
         OutboxJdbcRepository.ClaimedEvent claimed = outbox.claimNext().orElseThrow();
+        assertEquals(eventId, claimed.id());
         MessageProperties properties = new MessageProperties();
         properties.setMessageId(claimed.id().toString());
         Message message = new Message(claimed.payload().getBytes(StandardCharsets.UTF_8), properties);
@@ -71,7 +63,7 @@ class NotificationWorkerIntegrationTest {
 
     @Test
     void brokerFailureReschedulesClaimedEvent() throws Exception {
-        createEvent();
+        UUID eventId = createEvent();
         RabbitEventPublisher failingBroker = mock(RabbitEventPublisher.class);
         doThrow(new IllegalStateException("broker unavailable")).when(failingBroker).publish(any());
         new OutboxPublisher(outbox, failingBroker, metrics).dispatch();
@@ -79,6 +71,7 @@ class NotificationWorkerIntegrationTest {
         ArgumentCaptor<OutboxJdbcRepository.ClaimedEvent> sent =
                 ArgumentCaptor.forClass(OutboxJdbcRepository.ClaimedEvent.class);
         verify(failingBroker).publish(sent.capture());
+        assertEquals(eventId, sent.getValue().id());
         assertEquals("PENDING", jdbc.queryForObject("SELECT status FROM outbox_events WHERE id = ?",
                 String.class, sent.getValue().id()));
         assertEquals(1, jdbc.queryForObject("SELECT attempts FROM outbox_events WHERE id = ?",
@@ -86,6 +79,8 @@ class NotificationWorkerIntegrationTest {
     }
 
     private UUID createEvent() {
+        // Earlier test classes may leave valid outbox events in this shared test database.
+        jdbc.update("UPDATE outbox_events SET available_at = now() + interval '1 hour' WHERE status = 'PENDING'");
         UUID userId = UUID.randomUUID();
         UUID accountId = UUID.randomUUID();
         UUID transferId = UUID.randomUUID();

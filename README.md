@@ -57,4 +57,4 @@ Para Postman, puedes importar la URL `http://localhost:8080/v3/api-docs` como co
 
 ## Probar el core de transferencias
 
-Ejecuta `./scripts/test-local.ps1` en PowerShell. El script inicia un PostgreSQL temporal en el puerto 55432, aplica Flyway, prueba el core y el flujo HTTP completo, y elimina la base temporal. Al terminar muestra cuántas pruebas pasaron y si hubo fallos. No modifica la base `bankcore` de desarrollo. Si el puerto está ocupado, usa `./scripts/test-local.ps1 -Port 55433`.
+Ejecuta `./scripts/test-local.ps1` en PowerShell con la máquina de Podman encendida. Testcontainers inicia PostgreSQL 18 en un contenedor temporal, Flyway aplica las migraciones y Maven ejecuta la suite crítica, incluidos 100 traspasos simultáneos. El script informa el total de pruebas y comprueba que ninguna se haya omitido. No modifica la base `bankcore` de desarrollo. También puedes ejecutar `./mvnw.cmd test` directamente si configuras `DOCKER_HOST` para el socket compatible con Docker de Podman.

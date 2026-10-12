@@ -1,21 +1,11 @@
-param(
-    [string]$PostgresBin = 'D:\post\bin',
-    [int]$Port = 55432
-)
-
 $ErrorActionPreference = 'Stop'
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-$tempRoot = [IO.Path]::GetFullPath($env:TEMP)
-$clusterPath = Join-Path $tempRoot ('bankcore-test-' + [Guid]::NewGuid().ToString('N'))
-$pgCtl = Join-Path $PostgresBin 'pg_ctl.exe'
-$initDb = Join-Path $PostgresBin 'initdb.exe'
-$createDb = Join-Path $PostgresBin 'createdb.exe'
-$started = $false
-$testSummary = $null
 
-foreach ($tool in @($pgCtl, $initDb, $createDb)) {
-    if (-not (Test-Path -LiteralPath $tool)) { throw "Missing PostgreSQL tool: $tool" }
+if (-not (Get-Command podman -ErrorAction SilentlyContinue)) {
+    throw 'Podman is required to run the Testcontainers suite.'
 }
+& podman info --format '{{.Host.Arch}}' | Out-Null
+if ($LASTEXITCODE -ne 0) { throw 'Start the Podman machine before running tests.' }
 
 if (-not (Get-Command java -ErrorAction SilentlyContinue)) {
     $machineJavaHome = [Environment]::GetEnvironmentVariable('JAVA_HOME', 'Machine')
@@ -25,23 +15,9 @@ if (-not (Get-Command java -ErrorAction SilentlyContinue)) {
     }
 }
 
+$previousDockerHost = [Environment]::GetEnvironmentVariable('DOCKER_HOST', 'Process')
 try {
-    & $initDb -D $clusterPath -U bankcore -A trust -E UTF8 --no-instructions
-    if ($LASTEXITCODE -ne 0) { throw 'Temporary PostgreSQL initialization failed.' }
-
-    $logPath = Join-Path $clusterPath 'server.log'
-    & $pgCtl -D $clusterPath -o "-p $Port -h 127.0.0.1" -l $logPath -w start
-    if ($LASTEXITCODE -ne 0) { throw 'Temporary PostgreSQL startup failed.' }
-    $started = $true
-
-    & $createDb -h 127.0.0.1 -p $Port -U bankcore bankcore_test
-    if ($LASTEXITCODE -ne 0) { throw 'Temporary test database creation failed.' }
-
-    $env:BANKCORE_TEST_DB_URL = "jdbc:postgresql://127.0.0.1:$Port/bankcore_test"
-    $env:BANKCORE_TEST_DB_USER = 'bankcore'
-    $env:BANKCORE_TEST_DB_PASSWORD = 'unused-for-temporary-cluster'
-    $env:BANKCORE_JWT_SECRET = '0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF'
-
+    $env:DOCKER_HOST = 'npipe:////./pipe/podman-machine-default'
     Push-Location $repoRoot
     try {
         $testStartedAt = (Get-Date).ToUniversalTime()
@@ -59,24 +35,13 @@ try {
             $errors += [int]$report.testsuite.errors
             $skipped += [int]$report.testsuite.skipped
         }
-        if ($tests -lt 15 -or $failures -ne 0 -or $errors -ne 0 -or $skipped -ne 0) {
+        if ($tests -lt 19 -or $failures -ne 0 -or $errors -ne 0 -or $skipped -ne 0) {
             throw "Unexpected test result: $tests tests, $failures failures, $errors errors, $skipped skipped."
         }
-        $testSummary = "OK: $tests tests passed, 0 failures, 0 errors, 0 skipped."
+        Write-Host "OK: $tests tests passed, 0 failures, 0 errors, 0 skipped."
     } finally {
         Pop-Location
     }
 } finally {
-    Remove-Item Env:BANKCORE_TEST_DB_URL,Env:BANKCORE_TEST_DB_USER,Env:BANKCORE_TEST_DB_PASSWORD,Env:BANKCORE_JWT_SECRET -ErrorAction SilentlyContinue
-    if ($started) { & $pgCtl -D $clusterPath -m fast -w stop | Out-Null }
-    if (Test-Path -LiteralPath $clusterPath) {
-        $resolvedCluster = [IO.Path]::GetFullPath($clusterPath)
-        if (([IO.Path]::GetDirectoryName($resolvedCluster) -ne $tempRoot) -or
-            -not ([IO.Path]::GetFileName($resolvedCluster) -like 'bankcore-test-*')) {
-            throw 'Refusing to remove a temporary directory outside the expected location.'
-        }
-        Remove-Item -LiteralPath $resolvedCluster -Recurse -Force
-    }
+    [Environment]::SetEnvironmentVariable('DOCKER_HOST', $previousDockerHost, 'Process')
 }
-
-Write-Host $testSummary
